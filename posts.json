@@ -1,0 +1,18 @@
+{
+  "posts": [
+    {
+      "id": "beispiel-1",
+      "text": "Erster geplanter Beitrag über den Scheduler.\n\nHier steht der eigentliche Text – Zeilenumbrüche funktionieren mit \\n.",
+      "scheduled_time": "2026-09-01T09:00:00+02:00",
+      "visibility": "PUBLIC",
+      "status": "pending"
+    },
+    {
+      "id": "beispiel-2",
+      "text": "Zweiter Beitrag, eine Woche später.",
+      "scheduled_time": "2026-09-08T09:00:00+02:00",
+      "visibility": "PUBLIC",
+      "status": "pending"
+    }
+  ]
+}

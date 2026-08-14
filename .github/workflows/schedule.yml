@@ -1,0 +1,55 @@
+name: LinkedIn Post Scheduler
+
+on:
+  schedule:
+    # Alle 15 Minuten (UTC). GitHub kann geplante Läufe bei Last verzögern,
+    # deshalb prüft das Skript selbst, was fällig ist.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Nur simulieren, nichts veröffentlichen"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+# Zwei parallele Läufe würden denselben Beitrag doppelt veröffentlichen.
+concurrency:
+  group: linkedin-scheduler
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: Fällige Beiträge veröffentlichen
+        env:
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_AUTHOR_URN: ${{ secrets.LINKEDIN_AUTHOR_URN }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python scheduler.py run
+
+      - name: Status zurückschreiben
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add posts.json
+          if git diff --cached --quiet; then
+            echo "Keine Änderung an der Warteschlange."
+            exit 0
+          fi
+          git commit -m "chore: Status der Beitrags-Warteschlange aktualisiert [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
