@@ -1,10 +1,11 @@
 name: LinkedIn Post Scheduler
 
 on:
-  schedule:
-    # Alle 15 Minuten (UTC). GitHub kann geplante Läufe bei Last verzögern,
-    # deshalb prüft das Skript selbst, was fällig ist.
-    - cron: "*/15 * * * *"
+  # Der Zeitplan ist bewusst abgeschaltet, solange die Zugangsdaten fehlen.
+  # Zum Aktivieren die folgenden zwei Zeilen einkommentieren – vorher das
+  # Secret LINKEDIN_ACCESS_TOKEN hinterlegen, sonst schlägt jeder Lauf fehl.
+  # schedule:
+  #   - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
