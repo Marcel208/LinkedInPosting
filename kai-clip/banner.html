@@ -120,14 +120,13 @@ const VARIANTS = {
     blob.addColorStop(0, "rgba(155,28,54,0.13)"); blob.addColorStop(1, "rgba(155,28,54,0)");
     ctx.fillStyle = blob; ctx.fillRect(0, 0, 220, H);
     mascot(ctx, t, 78, 78, .42, { wave: bump(t, 1.6, 1.0), hop: bump(t, 1.5, .3) * 4 });
-    ctx.fillStyle = RED; ctx.fillRect(150, 30, 2, 100);
-    wordmark(ctx, 172, 74, 44, INK);
-    ctx.font = `700 17px ${SERIF}`; ctx.fillStyle = INK; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillText(C.line1, 173, 100);
+    ctx.fillStyle = RED; ctx.fillRect(150, 36, 2, 86);
+    wordmark(ctx, 172, 80, 48, INK);
+    ctx.font = `700 18px ${SERIF}`; ctx.fillStyle = INK; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(C.line1, 174, 108);
     const w1 = ctx.measureText(C.line1 + " ").width;
-    ctx.font = `italic 700 17px ${SERIF}`; ctx.fillStyle = RED; ctx.fillText(C.line2, 173 + w1, 100);
-    chips(ctx, 173, 112, INK, LINE, "#fff");
-    button(ctx, t, W - 22, 34, 40, RED, "#fff", "rgba(155,28,54,0.35)");
+    ctx.font = `italic 700 18px ${SERIF}`; ctx.fillStyle = RED; ctx.fillText(C.line2, 174 + w1, 108);
+    button(ctx, t, W - 24, 42, 40, RED, "#fff", "rgba(155,28,54,0.35)");
     ctx.fillStyle = RED; ctx.fillRect(0, H - 4, W, 4);
   },
   dark(ctx, t, W, H) {
