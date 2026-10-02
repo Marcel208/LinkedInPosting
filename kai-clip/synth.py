@@ -233,31 +233,44 @@ def chord_at(t):
     return int(t // 2) % 4
 
 
+def groove(mix, a, b, mode, chord, kick_times, gain=1.0):
+    """Drums + eighth-note bass between a and b. mode: full | half | build."""
+    k = int(np.ceil(a / BEAT - 1e-6))
+    while k * BEAT < b - 1e-6:
+        t = k * BEAT
+        if mode in ("full", "build") or k % 2 == 0:
+            mix.add(kick(), t, .95 * gain)
+            kick_times.append(t)
+        if (mode == "full" and k % 2 == 1) or (mode == "half" and k % 4 == 2):
+            mix.add(clap(), t, .8 * gain, pan=.05, send=.25)
+        for off, g in ((.25, 1.0),) if mode != "half" else ((.125, .5), (.25, .8), (.375, .5)):
+            if t + off < b:
+                mix.add(hat(), t + off, .8 * g * gain, pan=.3)
+        if mode == "full":
+            mix.add(hat(), t, .35 * gain, pan=-.3)
+        k += 1
+    if mode == "build":   # snare roll that doubles in speed towards b
+        t, step = a, BEAT / 2
+        while t < b - 1e-6:
+            mix.add(clap(), t, (.3 + .6 * (t - a) / (b - a)) * gain, pan=.05, send=.2)
+            t += step
+            if t > a + (b - a) / 2:
+                step = BEAT / 4
+            if t > a + (b - a) * .8:
+                step = BEAT / 8
+    k = int(np.ceil(a / (BEAT / 2) - 1e-6))
+    while k * BEAT / 2 < b - 1e-6:
+        t = k * BEAT / 2
+        root = ROOTS[chord(t)]
+        mix.add(bass_note(midi(root + (12 if k % 4 == 3 else 0)), .24), t, (.9 if mode != "half" else .65) * gain, bus="music")
+        k += 1
+
+
 def arrange(mix, dur):
-    drums = [(1.0, 4.45, "full"), (5.25, 9.75, "half"), (10.0, 12.42, "full"), (12.75, 14.0, "full")]
     kick_times = []
-    for a, b, mode in drums:
-        k = int(np.ceil(a / BEAT - 1e-6))
-        while k * BEAT < b - 1e-6:
-            t = k * BEAT
-            if mode == "full" or k % 2 == 0:
-                mix.add(kick(), t, .95)
-                kick_times.append(t)
-            if (mode == "full" and k % 2 == 1) or (mode == "half" and k % 4 == 2):
-                mix.add(clap(), t, .8, pan=.05, send=.25)
-            for off, g in ((.25, 1.0),) if mode == "full" else ((.125, .5), (.25, .8), (.375, .5)):
-                if t + off < b:
-                    mix.add(hat(), t + off, .8 * g, pan=.3)
-            if mode == "full":
-                mix.add(hat(), t, .35, pan=-.3)
-            k += 1
-        # bass in eighths
-        k = int(np.ceil(a / (BEAT / 2) - 1e-6))
-        while k * BEAT / 2 < b - 1e-6:
-            t = k * BEAT / 2
-            root = ROOTS[chord_at(t)]
-            mix.add(bass_note(midi(root + (12 if k % 4 == 3 else 0)), .24), t, .9 if mode == "full" else .65, bus="music")
-            k += 1
+    for a, b, mode in [(1.0, 4.45, "full"), (5.25, 9.75, "half"), (10.0, 12.42, "full"), (12.75, 14.0, "full")]:
+        groove(mix, a, b, mode, chord_at, kick_times)
+    kicks = kick_times
 
     # arp in sixteenths during chat + modes
     for a, b, g in ((5.25, 9.75, .8), (10.0, 12.42, 1.0)):
@@ -279,7 +292,129 @@ def arrange(mix, dur):
         mix.add(pad_note(midi(n), dur - 13.5 + .3), 13.5, 1.3, pan=(i - 2) * .3, bus="music", send=.6)
     for i, n in enumerate([36, 48]):
         mix.add(bass_note(midi(n), 1.4), 13.5, .8, bus="music")
-    return kick_times
+    return kicks
+
+
+
+# ---------------------------------------------------------------- galaxy style
+def braam(dur, up=False):
+    t = tt(dur)
+    k = t / dur
+    f0 = midi(33)
+    s = sum(saw(f0 * m * d, t + rng.uniform(0, 1)) for m in (1, 1.5, 2) for d in (.995, 1.004)) / 4
+    if up:
+        s = s + saw(midi(45) * (1 + .06 * k), t) * .4
+    s = sweep_lowpass(s, 120 + 1600 * np.exp(-k * 3) * np.minimum(1, t / .12))
+    env = np.minimum(1, t / .08) * np.exp(-k * 1.6) * np.minimum(1, (dur - t) / .2)
+    return np.tanh(s * env * 3) * .55
+
+
+def timpani():
+    t = tt(.9)
+    f = 95 + 40 * np.exp(-t * 30)
+    return (np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 5) + lowpass_fft(rng.standard_normal(len(t)), 600) * np.exp(-t * 25) * .4) * .7
+
+
+def choir_note(freq, dur):
+    t = tt(dur)
+    vib = 1 + .006 * np.sin(2 * np.pi * 5.2 * t)
+    s = sum(saw(freq * d * vib, t + rng.uniform(0, 1)) for d in (.993, 1.0, 1.008))
+    spec = np.fft.rfft(s)
+    f = np.fft.rfftfreq(len(s), 1 / SR)
+    form = sum(a * np.exp(-((f - fc) / bw) ** 2) for fc, bw, a in ((730, 90, 1), (1090, 110, .5), (2440, 160, .25)))
+    s = np.fft.irfft(spec * form, len(s))
+    env = np.minimum(1, t / .5) * np.minimum(1, (dur - t) / .6)
+    return s * env * .025
+
+
+def laser():
+    t = tt(.28)
+    f = 3200 * np.exp(-t * 14) + 180
+    ph = np.cumsum(f) / SR
+    s = np.sign(np.sin(2 * np.pi * ph)) * .4 + np.sin(2 * np.pi * ph * 1.5)
+    return lowpass_fft(s * np.exp(-t * 7), 7000) * .3
+
+
+def explode():
+    t = tt(1.6)
+    n = sweep_lowpass(rng.standard_normal(len(t)), 5000 * np.exp(-t * 3) + 150)
+    boom = np.sin(2 * np.pi * np.cumsum(30 + 90 * np.exp(-t * 7)) / SR) * np.exp(-t * 3.5)
+    return np.tanh((n * np.exp(-t * 2.5) * 1.6 + boom * 1.2) * 1.5) * .8
+
+
+def coin(p=0):
+    out = np.zeros(int(.4 * SR))
+    for j, (m, d) in enumerate(((83 + p * 2, .07), (88 + p * 2, .3))):
+        t = tt(d)
+        s = np.sign(np.sin(2 * np.pi * midi(m) * t)) * np.exp(-t * (6 if j else 30)) * .12
+        i = int(j * .07 * SR)
+        out[i:i + len(s)] += s
+    return out
+
+
+def airhorn():
+    out = np.zeros(int(1.4 * SR))
+    for start, d in ((0, .13), (.17, .13), (.34, .9)):
+        t = tt(d)
+        f = np.array([466.16, 587.33, 698.46])[:, None] * (1 + .03 * np.minimum(1, t / .05))
+        s = sum(np.sign(np.sin(2 * np.pi * fi * t)) for fi in f) / 3
+        s = lowpass_fft(np.tanh(s * 2), 3800) * np.minimum(1, t / .01) * np.minimum(1, (d - t) / .03)
+        i = int(start * SR)
+        out[i:i + len(s)] += s * .45
+    return out
+
+
+def firework(p=0):
+    out = np.zeros(int(1.9 * SR))
+    t = tt(.35)
+    whistle = np.sin(2 * np.pi * np.cumsum(900 + 2200 * t / .35) / SR) * (t / .35) * .08
+    out[:len(t)] += whistle
+    b = impact(soft=True)[: int(1.2 * SR)] * .5
+    out[int(.35 * SR):int(.35 * SR) + len(b)] += b
+    for _ in range(40):
+        c = click(rng.uniform(.4, 1))
+        i = int((.45 + rng.uniform(0, 1.2)) * SR)
+        out[i:i + len(c)] += c * .7
+    return out
+
+
+GCHORDS = [[57, 60, 64], [53, 57, 60], [55, 60, 64], [55, 59, 62]]
+
+
+def arrange_galaxy(mix, dur):
+    kicks = []
+    # drone under the trailer
+    t = tt(4.4)
+    drone = lowpass_fft(saw(midi(33), t) + saw(midi(33) * 1.005, t + .3), 160) * np.minimum(1, t / 1.5) * np.minimum(1, (4.4 - t) / .2)
+    mix.add(drone, 0, .35, bus="music")
+    # choir for the arrival: Am F C G
+    for (a, b, ch) in ((4.3, 5.3, 0), (5.3, 6.3, 1), (6.3, 7.0, 2), (7.0, 8.05, 3)):
+        for i, n in enumerate(GCHORDS[ch] + [GCHORDS[ch][0] + 12]):
+            mix.add(choir_note(midi(n), b - a + .3), a, 1.0, pan=(i - 1.5) * .35, bus="music", send=.8)
+    # drop + build + finale grooves (chords per 2 s bar from 8.0)
+    gchord = lambda t: int((t - 8.0) // 2) % 4 if t < 13 else int((t - 13.0) // 1) % 4
+    groove(mix, 8.0, 11.0, "full", gchord, kicks, 1.05)
+    groove(mix, 11.0, 13.0, "build", gchord, kicks, .9)
+    groove(mix, 13.0, 16.5, "full", gchord, kicks, 1.0)
+    for a, b, g in ((8.0, 11.0, 1.0), (11.0, 13.0, .7), (13.0, 16.5, 1.0)):
+        k = int(np.ceil(a / (BEAT / 4)))
+        while k * BEAT / 4 < b:
+            t0 = k * BEAT / 4
+            notes = GCHORDS[gchord(t0)]
+            n = notes[[0, 1, 2, 1][k % 4]] + 12 + (12 if k % 8 >= 4 else 0)
+            mix.add(pluck(midi(n)), t0, g, pan=.35 * np.sin(k), bus="music", send=.35)
+            k += 1
+    for a in np.arange(8.0, 16.5, 1.0 if True else 2):
+        ch = GCHORDS[gchord(a + .01)]
+        for i, n in enumerate(ch):
+            mix.add(pad_note(midi(n), 1.05), a, 1.2, pan=(i - 1) * .5, bus="music", send=.4)
+    # final chord ring-out
+    for i, n in enumerate([45, 52, 57, 60, 64, 69]):
+        mix.add(pad_note(midi(n), dur - 16.5), 16.5, 1.6, pan=(i - 2.5) * .3, bus="music", send=.7)
+        mix.add(choir_note(midi(n + 12), dur - 16.5), 16.5, .9, pan=(i - 2.5) * .3, bus="music", send=.8)
+    mix.add(bass_note(midi(33), 1.5), 16.5, 1.0, bus="music")
+    mix.add(crash(), 16.5, .5, send=.4)
+    return kicks
 
 
 def sfx(mix, cues):
@@ -291,7 +426,7 @@ def sfx(mix, cues):
             mix.add(impact(c.get("soft", False)), t, .9 if not c.get("soft") else .7, send=.3)
             mix.add(crash(), t, .5 if not c.get("soft") else .25, send=.3)
         elif ty == "hit":
-            mix.add(hit(), t, .75, send=.2)
+            mix.add(hit(), t, .9 if c.get("big") else .75, send=.2)
             if c.get("crash"):
                 mix.add(crash(), t, .45, send=.3)
         elif ty == "whoosh":
@@ -314,6 +449,28 @@ def sfx(mix, cues):
             mix.add(ding(), t, 1.0, send=.6)
         elif ty == "blip":
             mix.add(blip(), t, 1.0, pan=-.2, send=.5)
+        elif ty == "braam":
+            mix.add(braam(c["dur"], c.get("up", False)), t, .9, send=.4)
+        elif ty == "roll":
+            n = 14
+            for j in range(n):
+                tj = t + c["dur"] * (j / n) ** .7
+                mix.add(timpani(), tj, .35 + .6 * j / n, send=.3)
+        elif ty == "choir":
+            pass  # handled by the arrangement
+        elif ty == "laser":
+            mix.add(laser(), t, .9, pan=.3, send=.2)
+        elif ty == "explode":
+            mix.add(explode(), t, .85, pan=.35, send=.3)
+        elif ty == "coin":
+            mix.add(coin(c.get("p", 0)), t, 1.0, pan=.3, send=.3)
+        elif ty == "airhorn":
+            mix.add(airhorn(), t, .8, send=.3)
+        elif ty == "glasses":
+            mix.add(hit(), t, .6)
+            mix.add(sparkle(), t + .05, .7, send=.6)
+        elif ty == "firework":
+            mix.add(firework(c.get("p", 0)), t, .8, pan=(-.5 if c.get("p", 0) % 2 == 0 else .5), send=.4)
         elif ty == "sparkle":
             mix.add(sparkle(), t, 1.0, pan=.1, send=.7)
 
@@ -334,7 +491,7 @@ def main():
     data = json.load(open(sys.argv[1]))
     dur = data["duration"]
     mix = Mix(dur)
-    kicks = arrange(mix, dur)
+    kicks = arrange_galaxy(mix, dur) if data.get("style") == "galaxy" else arrange(mix, dur)
     sfx(mix, data["cues"])
 
     # sidechain duck on the music bus

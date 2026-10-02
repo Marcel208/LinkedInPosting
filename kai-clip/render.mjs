@@ -44,7 +44,8 @@ if (stills) {
   await new Promise(r => ff.on("close", r));
   if (withAudio) {
     const sfx = await page.evaluate(() => window.SFX || []);
-    writeFileSync("sfx.json", JSON.stringify({ duration, cues: sfx }));
+    const style = await page.evaluate(() => window.MUSIC || "promo");
+    writeFileSync("sfx.json", JSON.stringify({ duration, style, cues: sfx }));
     execFileSync("python3", ["synth.py", "sfx.json", "soundtrack.wav"], { stdio: "inherit" });
     execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", video, "-i", "soundtrack.wav", "-c:v", "copy",
       "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", out], { stdio: "inherit" });
