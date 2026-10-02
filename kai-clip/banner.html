@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>KAI Signatur-Banner</title>
+<style>
+  @font-face { font-family: "Lora"; src: url(fonts/Lora.woff2) format("woff2"); font-weight: 400 700; }
+  @font-face { font-family: "Lora"; src: url(fonts/Lora-Italic.woff2) format("woff2"); font-weight: 400 700; font-style: italic; }
+  @font-face { font-family: "Noto Sans"; src: url(fonts/NotoSans.woff2) format("woff2"); font-weight: 100 900; }
+  html, body { margin: 0; background: #e9e4e6; }
+  body { padding: 24px; display: grid; gap: 24px; justify-content: start; font-family: "Noto Sans", sans-serif; }
+  canvas { width: 600px; display: block; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+</style>
+</head>
+<body>
+<script>
+// E-Mail-Signatur-Banner für KAI. Gezeichnet in 600 × H CSS-Pixeln, gerendert mit 2× Auflösung.
+// Varianten: light (600×160), dark (600×160), red (600×100). ?v=<variante>&t=<sekunden> zeigt nur eine.
+const C = {
+  name: "KAI",
+  line1: "Frag deine Baudaten.",
+  line2: "In Klartext.",
+  galaxy: "Das beste Produkt der Galaxie.*",
+  chips: ["RIB 4.0 & iTWO", "Read-only als Standard"],
+  url: "xdhub.de/kai",
+};
+const RED = "#9b1c36", RED_HI = "#d0284f", INK = "#16121a", GREY = "#6c6469", LINE = "#e9d3da", PINK = "#ffd2dc", GOLD = "#ffcf5a";
+const SERIF = "Lora", SANS = "'Noto Sans'";
+const SIZES = { light: [600, 160], dark: [600, 160], red: [600, 100] };
+const SCALE = 2;
+
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const bump = (t, a, d) => Math.max(0, Math.sin(prog(t, a, a + d) * Math.PI));
+function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
+
+function rrect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+// t = seconds into a 3 s loop: blink at 1.1 s, wave 1.6–2.6 s, ring spins continuously
+function mascot(ctx, t, x, y, s, o = {}) {
+  const { body = RED, outline = null, halo = false, glasses = false, wave = 0, hop = 0 } = o;
+  ctx.save(); ctx.translate(x, y - hop); ctx.scale(s, s);
+  const sf = () => { if (outline) { ctx.save(); ctx.strokeStyle = outline; ctx.lineWidth = 10; ctx.stroke(); ctx.restore(); } ctx.fill(); };
+  if (halo) {
+    ctx.save(); ctx.strokeStyle = GOLD; ctx.lineWidth = 8; ctx.shadowColor = GOLD; ctx.shadowBlur = 24;
+    ctx.beginPath(); ctx.ellipse(0, -110 + Math.sin(t * 2.1) * 3, 70, 16, 0, 0, 6.283); ctx.stroke(); ctx.restore();
+  }
+  ctx.fillStyle = body;
+  rrect(ctx, -57, 60, 32, 58, 16); sf(); rrect(ctx, 25, 60, 32, 58, 16); sf();
+  ctx.beginPath(); ctx.arc(-105, 24, 18, 0, 6.283); sf();
+  ctx.save(); ctx.translate(80, 10); ctx.rotate(wave * (-1.25 + Math.sin(t * 12.566) * .35));
+  ctx.beginPath(); ctx.arc(27, 14, 18, 0, 6.283); sf(); ctx.restore();
+  rrect(ctx, -92, -72, 184, 145, 32); sf();
+  const bl = t > 1.05 && t < 1.17 ? .12 : 1;
+  ctx.fillStyle = "#fff";
+  for (const ex of [-38, 38]) { ctx.beginPath(); ctx.ellipse(ex, -10, 22, 22 * bl, 0, 0, 6.283); ctx.fill(); }
+  if (glasses) {
+    ctx.fillStyle = "#000"; ctx.fillRect(-84, -36, 168, 10);
+    for (const sx of [-1, 1]) {
+      ctx.fillRect(sx < 0 ? -78 : 6, -26, 72, 24); ctx.fillRect(sx < 0 ? -70 : 14, -2, 56, 9); ctx.fillRect(sx < 0 ? -62 : 22, 7, 40, 8);
+      ctx.fillStyle = "#fff"; ctx.fillRect(sx < 0 ? -66 : 18, -22, 8, 8); ctx.fillRect(sx < 0 ? -58 : 26, -14, 8, 8); ctx.fillStyle = "#000";
+    }
+  }
+  ctx.save(); ctx.translate(121, -80); ctx.rotate(t / 3 * 6.283 - 2.4);
+  ctx.strokeStyle = body === RED ? RED : PINK; ctx.lineWidth = 6.5; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(0, 0, 16, .45, 6.283 - .1); ctx.stroke(); ctx.restore();
+  ctx.restore();
+}
+
+function wordmark(ctx, x, y, size, color, dot = RED_HI) {
+  ctx.font = `700 ${size}px ${SERIF}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = color; ctx.fillText(C.name, x, y);
+  const w = ctx.measureText(C.name).width;
+  ctx.fillStyle = dot; ctx.beginPath(); ctx.arc(x + w + size * .16, y - size * .07, size * .09, 0, 6.283); ctx.fill();
+  return w + size * .3;
+}
+
+function button(ctx, t, x, y, h, fill, text, glow) {
+  ctx.font = `700 ${h * .42}px ${SANS}`;
+  const w = ctx.measureText(C.url).width + h * 1.45;
+  rrect(ctx, x - w, y, w, h, h * .22);
+  ctx.save(); ctx.fillStyle = fill; if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = 14; } ctx.fill(); ctx.restore();
+  ctx.save(); rrect(ctx, x - w, y, w, h, h * .22); ctx.clip();
+  const sx = x - w - 80 + (t % 3) / 3 * (w + 160);
+  const g = ctx.createLinearGradient(sx - 40, 0, sx + 40, 0);
+  g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(.5, "rgba(255,255,255,0.28)"); g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g; ctx.fillRect(x - w, y, w, h); ctx.restore();
+  ctx.fillStyle = text; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillText(C.url, x - w + h * .38, y + h / 2 + 1);
+  const ax = x - h * .52 + Math.sin(t / 3 * 6.283 * 2) * 2, ay = y + h / 2;
+  ctx.strokeStyle = text; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath(); ctx.moveTo(ax - 8, ay); ctx.lineTo(ax + 8, ay); ctx.moveTo(ax + 2, ay - 6); ctx.lineTo(ax + 8, ay); ctx.lineTo(ax + 2, ay + 6); ctx.stroke();
+  return w;
+}
+
+function chips(ctx, x, y, color, border, fill) {
+  ctx.font = `600 11px ${SANS}`; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  for (const c of C.chips) {
+    const w = ctx.measureText(c).width + 26;
+    rrect(ctx, x, y, w, 22, 11); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = border; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = RED_HI; ctx.beginPath(); ctx.arc(x + 10, y + 11, 2.6, 0, 6.283); ctx.fill();
+    ctx.fillStyle = color; ctx.fillText(c, x + 17, y + 11.5);
+    x += w + 6;
+  }
+}
+
+const VARIANTS = {
+  light(ctx, t, W, H) {
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, "#f8e7ed"); g.addColorStop(.6, "#fcf6f8"); g.addColorStop(1, "#f6e4ea");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(155,28,54,0.08)";
+    for (let y = 8; y < H; y += 16) for (let x = 8; x < W; x += 16) ctx.fillRect(x, y, 1.2, 1.2);
+    const blob = ctx.createRadialGradient(80, 80, 0, 80, 80, 110);
+    blob.addColorStop(0, "rgba(155,28,54,0.13)"); blob.addColorStop(1, "rgba(155,28,54,0)");
+    ctx.fillStyle = blob; ctx.fillRect(0, 0, 220, H);
+    mascot(ctx, t, 78, 78, .42, { wave: bump(t, 1.6, 1.0), hop: bump(t, 1.5, .3) * 4 });
+    ctx.fillStyle = RED; ctx.fillRect(150, 30, 2, 100);
+    wordmark(ctx, 172, 74, 44, INK);
+    ctx.font = `700 17px ${SERIF}`; ctx.fillStyle = INK; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(C.line1, 173, 100);
+    const w1 = ctx.measureText(C.line1 + " ").width;
+    ctx.font = `italic 700 17px ${SERIF}`; ctx.fillStyle = RED; ctx.fillText(C.line2, 173 + w1, 100);
+    chips(ctx, 173, 112, INK, LINE, "#fff");
+    button(ctx, t, W - 22, 34, 40, RED, "#fff", "rgba(155,28,54,0.35)");
+    ctx.fillStyle = RED; ctx.fillRect(0, H - 4, W, 4);
+  },
+  dark(ctx, t, W, H) {
+    ctx.fillStyle = "#07030a"; ctx.fillRect(0, 0, W, H);
+    for (const [x, y, r, c] of [[90, 70, 160, "rgba(155,28,54,0.55)"], [470, 130, 220, "rgba(90,30,120,0.40)"], [320, 0, 140, "rgba(208,40,79,0.22)"]]) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, c); g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    const R = rng(9);
+    for (let i = 0; i < 110; i++) {
+      const x = R() * W, y = R() * H, s = .5 + R() * 1.3, p = R() * 6.283;
+      ctx.globalAlpha = i % 9 ? .3 + .5 * R() : .35 + .65 * (.5 + .5 * Math.sin(t / 3 * 6.283 * (1 + (i % 3)) + p));
+      ctx.fillStyle = i % 7 ? "#fff" : GOLD; ctx.fillRect(x, y, s, s);
+    }
+    ctx.globalAlpha = 1;
+    // god rays behind the mascot
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.translate(78, 84); ctx.rotate(t / 3 * .6);
+    const rg = ctx.createRadialGradient(0, 0, 0, 0, 0, 120); rg.addColorStop(0, "rgba(255,200,215,0.32)"); rg.addColorStop(1, "rgba(255,200,215,0)");
+    ctx.fillStyle = rg;
+    for (let i = 0; i < 14; i++) { const a = i / 14 * 6.283; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 140, a - .07, a + .07); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+    mascot(ctx, t, 78, 86, .40, { halo: true, glasses: true, wave: bump(t, 1.6, 1.0), hop: bump(t, 1.5, .3) * 4 });
+    ctx.save(); const lg = ctx.createLinearGradient(0, 30, 0, 130); lg.addColorStop(0, "rgba(255,210,220,0)"); lg.addColorStop(.5, "rgba(255,210,220,.7)"); lg.addColorStop(1, "rgba(255,210,220,0)");
+    ctx.fillStyle = lg; ctx.fillRect(150, 26, 1.5, 108); ctx.restore();
+    wordmark(ctx, 172, 76, 46, "#fff");
+    ctx.font = `italic 700 18px ${SERIF}`; ctx.fillStyle = PINK; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(C.galaxy, 173, 102);
+    ctx.font = `400 10px ${SANS}`; ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillText("*leicht übertrieben. Echt: Fragen an RIB 4.0 & iTWO in Klartext.", 173, 124);
+    button(ctx, t, W - 22, 36, 40, RED, "#fff", RED_HI);
+  },
+  red(ctx, t, W, H) {
+    const g = ctx.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0, "#7d1229"); g.addColorStop(1, RED);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.beginPath(); ctx.arc(70, 50, 70, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(560, 110, 90, 0, 6.283); ctx.fill();
+    mascot(ctx, t, 56, 50, .28, { body: "#fff", wave: bump(t, 1.6, 1.0), hop: bump(t, 1.5, .3) * 3 });
+    // white mascot needs red eyes
+    ctx.save(); ctx.translate(56, 50 - bump(t, 1.5, .3) * 3); ctx.scale(.28, .28);
+    const bl = t > 1.05 && t < 1.17 ? .12 : 1; ctx.fillStyle = RED;
+    for (const ex of [-38, 38]) { ctx.beginPath(); ctx.ellipse(ex, -10, 22, 22 * bl, 0, 0, 6.283); ctx.fill(); }
+    ctx.restore();
+    const ww = wordmark(ctx, 110, 60, 34, "#fff", PINK);
+    ctx.font = `700 15px ${SERIF}`; ctx.fillStyle = "#fff"; ctx.textAlign = "left";
+    ctx.fillText(C.line1, 110 + ww + 12, 52);
+    ctx.font = `italic 700 15px ${SERIF}`; ctx.fillStyle = PINK; ctx.fillText(C.line2, 110 + ww + 12, 71);
+    button(ctx, t, W - 18, 31, 38, "#fff", RED, null);
+  },
+};
+
+const params = new URLSearchParams(location.search);
+const only = params.get("v"), tFixed = params.has("t") ? Number(params.get("t")) : null;
+const canvases = {};
+for (const [name, [w, h]] of Object.entries(SIZES)) {
+  if (only && only !== name) continue;
+  const cv = document.createElement("canvas");
+  cv.width = w * SCALE; cv.height = h * SCALE; cv.style.width = w + "px"; cv.id = name;
+  document.body.appendChild(cv); canvases[name] = cv;
+}
+function draw(t) {
+  for (const [name, cv] of Object.entries(canvases)) {
+    const ctx = cv.getContext("2d"), [w, h] = SIZES[name];
+    ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+    VARIANTS[name](ctx, t, w, h);
+  }
+}
+window.drawBanner = (t) => { draw(t); return Object.fromEntries(Object.entries(canvases).map(([n, c]) => [n, c.toDataURL("image/png").split(",")[1]])); };
+window.ready = Promise.all([document.fonts.load(`700 20px ${SERIF}`), document.fonts.load(`italic 700 20px ${SERIF}`), document.fonts.load(`600 20px ${SANS}`)]).then(() => document.fonts.ready);
+window.ready.then(() => {
+  if (tFixed !== null || params.has("render")) { draw(tFixed ?? 0); return; }
+  const t0 = performance.now();
+  const loop = now => { draw(((now - t0) / 1000) % 3); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+});
+</script>
+</body>
+</html>
