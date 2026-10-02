@@ -4,3 +4,10 @@ __pycache__/
 .venv/
 venv/
 posts.json.*.tmp
+
+# clip rendering
+kai-clip/node_modules
+kai-clip/still-*.png
+kai-clip/*.video.mp4
+kai-clip/sfx.json
+kai-clip/soundtrack.wav
