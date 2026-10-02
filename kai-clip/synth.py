@@ -324,7 +324,7 @@ def choir_note(freq, dur):
     form = sum(a * np.exp(-((f - fc) / bw) ** 2) for fc, bw, a in ((730, 90, 1), (1090, 110, .5), (2440, 160, .25)))
     s = np.fft.irfft(spec * form, len(s))
     env = np.minimum(1, t / .5) * np.minimum(1, (dur - t) / .6)
-    return s * env * .025
+    return s * env * .09
 
 
 def laser():
@@ -391,6 +391,9 @@ def arrange_galaxy(mix, dur):
     for (a, b, ch) in ((4.3, 5.3, 0), (5.3, 6.3, 1), (6.3, 7.0, 2), (7.0, 8.05, 3)):
         for i, n in enumerate(GCHORDS[ch] + [GCHORDS[ch][0] + 12]):
             mix.add(choir_note(midi(n), b - a + .3), a, 1.0, pan=(i - 1.5) * .35, bus="music", send=.8)
+        for i, n in enumerate(GCHORDS[ch]):
+            mix.add(pad_note(midi(n), b - a + .1), a, 1.4, pan=(i - 1) * .5, bus="music", send=.5)
+        mix.add(braam(b - a + .2), a, .35, send=.3)
     # drop + build + finale grooves (chords per 2 s bar from 8.0)
     gchord = lambda t: int((t - 8.0) // 2) % 4 if t < 13 else int((t - 13.0) // 1) % 4
     groove(mix, 8.0, 11.0, "full", gchord, kicks, 1.05)

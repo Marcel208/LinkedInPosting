@@ -2,6 +2,7 @@
 //   node render.mjs                                  -> kai-clip.html  -> kai-clip.mp4 (30 fps)
 //   node render.mjs --page kai-promo.html --fps 60 --blur 6 --audio
 //   node render.mjs --page kai-promo.html --stills 1,2.5,8
+//   node render.mjs --page kai-galaxy.html --audio-only     (new soundtrack, keep the picture)
 // --blur N   motion blur: N sub-frames per frame (page must expose renderFrame)
 // --audio    synthesise the soundtrack from the page's SFX cue list (synth.py) and mux it
 import { chromium } from "playwright";
@@ -26,7 +27,18 @@ const frame = t => page.evaluate(([t, fps, blur]) => window.renderFrame
   ? renderFrame(t, fps, blur)
   : (render(t), document.getElementById("c").toDataURL("image/png").split(",")[1]), [t, FPS, BLUR]);
 
-if (stills) {
+if (args.includes("--audio-only")) {
+  // re-synthesise the soundtrack and swap it into an existing render
+  const duration = await page.evaluate(() => DURATION);
+  const style = await page.evaluate(() => window.MUSIC || "promo");
+  writeFileSync("sfx.json", JSON.stringify({ duration, style, cues: await page.evaluate(() => window.SFX || []) }));
+  execFileSync("python3", ["synth.py", "sfx.json", "soundtrack.wav"], { stdio: "inherit" });
+  const tmp = out.replace(/\.mp4$/, ".remux.mp4");
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", out, "-i", "soundtrack.wav", "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+    "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", tmp], { stdio: "inherit" });
+  execFileSync("mv", [tmp, out]); rmSync("sfx.json");
+  console.log("remuxed", out);
+} else if (stills) {
   const base = path.basename(pageFile, ".html");
   for (const t of stills) writeFileSync(`still-${base}-${t}.png`, Buffer.from(await frame(t), "base64"));
 } else {
