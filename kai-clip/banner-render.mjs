@@ -26,6 +26,13 @@ for (const name of ["light", "dark", "red"]) {
     "-vf", "scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle",
     "-loop", "0", `${OUT}/kai-signatur-${name}.gif`]);
 }
+// light banner in exact display sizes: Outlook/Gmail show a pasted image at its pixel size
+for (const w of [600, 450]) {
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", `${OUT}/kai-signatur-light.png`, "-vf", `scale=${w}:-1:flags=lanczos`, `${OUT}/kai-signatur-light-${w}.png`]);
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(FPS), "-i", `${OUT}/.frames/light-%03d.png`,
+    "-vf", `scale=${w}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle`,
+    "-loop", "0", `${OUT}/kai-signatur-light-${w}.gif`]);
+}
 rmSync(`${OUT}/.frames`, { recursive: true });
 await browser.close();
 console.log("done");
