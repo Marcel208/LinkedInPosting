@@ -560,7 +560,7 @@ function nameImage() {
 function sceneReveal(t) {
   const k0 = t - REV, lay = nameLayout(ctx);
   backdrop(t, prog(k0, .2, 1.5));
-  const push = 1 + easeSine(prog(k0, 0, 6.5)) * .06;
+  const push = 1 + easeSine(prog(k0, 0, 2.4)) * .04;   // settles before the text appears
   ctx.save(); ctx.translate(CX, 520); ctx.scale(push, push); ctx.translate(-CX, -520);
   glow(CX, 520, 760, "rgba(155,28,54,0.8)", .55 + bump(k0, 0, .9) * .9);
   // soft rays
@@ -633,11 +633,13 @@ function sceneReveal(t) {
 // master
 // ===========================================================================
 const SHAKES = [[3.0, 5], [6.0, 7], [8.0, 6], [10.0, 6], [13.95, 10], [15.5, 9], [16.3, 7], [18.1, 9], [19.0, 40], [19.5, 12], [20.5, 12],
-                [21.5, 12], [22.5, 14], [REV, 46], [REV + 1.75, 12]];
+                [21.5, 12], [22.5, 14], [REV, 46]];
 function shake(t) {
   let a = 0;
-  for (const [h, amp] of SHAKES) if (t >= h && t < h + .9) a += amp * Math.exp(-(t - h) * 6);
-  a += prog(t, 24.0, 25.3) * 6 + prog(t, 18.45, 19.0) * 5;
+  for (const [h, amp] of SHAKES) if (t >= h && t < h + .9) a += amp * Math.exp(-(t - h) * 6) * (1 - prog(t, h + .5, h + .9));
+  a += prog(t, 24.0, 25.3) * 6 * (t < REV ? 1 : 0) + prog(t, 18.45, 19.0) * 5 * (t < 19.5 ? 1 : 0);
+  // after the reveal everything comes to a complete rest so the name can be read
+  if (t > REV) a *= 1 - easeInOut(prog(t, REV + .5, REV + 1.3));
   return [a * Math.sin(t * 91.3) * Math.cos(t * 17.1), a * Math.cos(t * 83.7) * Math.sin(t * 23.9), a * .0014 * Math.sin(t * 61)];
 }
 function render(t) {
