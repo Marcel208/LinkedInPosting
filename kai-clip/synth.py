@@ -439,8 +439,8 @@ def glitch(p=0):
 
 
 def tone_hit(p=0):
-    t = tt(.7)
-    base = hit()[: len(t)]
+    base = hit()
+    t = tt(len(base) / SR)
     f = midi(57 + [0, 3, 7, 10, 12][p % 5])
     return base + np.sin(2 * np.pi * f * t) * np.exp(-t * 6) * .35
 
@@ -580,6 +580,14 @@ def main():
     out = mix.dry + mix.music * duck + reverb(mix.verb)
 
     out = out[:, : int(dur * SR)]
+    # "silence" cues: a hard gap in the whole mix (e.g. the breath before a reveal)
+    for c in data["cues"]:
+        if c["type"] == "silence":
+            i0, i1 = int(c["t"] * SR), int((c["t"] + c["dur"]) * SR)
+            fo, fi = int(.02 * SR), int(.004 * SR)
+            out[:, i0:i0 + fo] *= np.linspace(1, 0, fo)
+            out[:, i0 + fo:i1] = 0
+            out[:, i1:i1 + fi] *= np.linspace(0, 1, fi)
     out = np.tanh(out * .8)
     out *= .9 / np.max(np.abs(out))
     fade = int(.35 * SR)

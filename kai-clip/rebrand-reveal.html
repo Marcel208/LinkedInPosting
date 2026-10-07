@@ -379,7 +379,7 @@ function sceneTesseract(t) {
 // ===========================================================================
 // scene 4: REVEAL
 // ===========================================================================
-cue(11.0, "impact"); cue(11.0, "braam", { dur: 3.5, up: true });
+cue(10.86, "silence", { dur: .14 }); cue(11.0, "impact"); cue(11.0, "braam", { dur: 3.5, up: true });
 [...CONFIG.newName].forEach((_, i) => cue(11.02 + i * .05, "click", { v: 1 }));
 cue(11.55, "ding"); cue(12.1, "whoosh", { dur: .35, soft: true }); cue(12.7, "pop", { soft: true }); cue(15.0, "blip");
 
