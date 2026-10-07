@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Rebrand Reveal Epic</title>
+<style>
+  @font-face { font-family: "Lora"; src: url(fonts/Lora.woff2) format("woff2"); font-weight: 400 700; }
+  @font-face { font-family: "Lora"; src: url(fonts/Lora-Italic.woff2) format("woff2"); font-weight: 400 700; font-style: italic; }
+  @font-face { font-family: "Noto Sans"; src: url(fonts/NotoSans.woff2) format("woff2"); font-weight: 100 900; }
+  html, body { margin: 0; background: #000; height: 100%; }
+  body { display: grid; place-items: center; }
+  canvas { width: min(100vw, 100vh); height: min(100vw, 100vh); display: block; }
+  #acc { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1080"></canvas>
+<canvas id="acc" width="1080" height="1080"></canvas>
+<script>
+// ===========================================================================
+// 5D INSTITUT → NEUER NAME — Epic Cut, 32 s, 120-BPM-Raster, ruhigeres Tempo.
+//  0–3   1D   Ein Lichtpunkt.            3–6   2D   Grundriss zeichnet sich.
+//  6–8   3D   Gebäude wächst.            8–10  4D   Eine ganze Stadt wächst in Wellen.
+// 10–12.5 5D  Kosten leuchten auf.      12.5–15.5   Stadt → Partikel → 5D°-Logo.
+// 15.5–19     5 zählt bis ∞, Logo zerspringt.   19–23.5  Flug durch Tesserakte.
+// 23.5–25.5   „Zeit für einen neuen Namen." → Stille.   25.5– Reveal aus Partikeln.
+// Namen ändern: CONFIG.newName.
+// ===========================================================================
+const CONFIG = {
+  newName: "DIMENSIO",
+  ringAsLastLetter: true,
+  tagline: "Bauen in allen Dimensionen.",
+  formerly: "vormals 5D Institut",
+  url: "5d-institut.de",
+  opener: "Alles beginnt mit einem Punkt.",
+  dims: [["1D", "Punkt."], ["2D", "Fläche."], ["3D", "Raum."], ["4D", "Zeit."], ["5D", "Kosten."]],
+  dimStarts: [.8, 3.0, 6.0, 8.0, 10.0],
+  since: "Fünf Dimensionen. Seit 2016.",
+  flips: [[15.5, "6", "Nachhaltigkeit"], [16.3, "7", "Betrieb"], [17.0, "8", ""], [17.35, "9", ""], [17.6, "12", ""],
+          [17.8, "27", ""], [17.95, "99", ""], [18.1, "∞", ""]],
+  more: "Bauen hat mehr Dimensionen.",
+  words: ["Daten.", "Prozesse.", "KI.", "Menschen."],
+  newNameLead: ["Zeit für einen", "neuen Namen."],
+  costs: ["4,2 Mio €", "2,8 Mio €", "3,6 Mio €", "1,9 Mio €", "5,1 Mio €"],
+  total: 48.6,
+};
+const DURATION = 32, REV = 25.5;
+const W = 1080, H = 1080, CX = W / 2, CY = H / 2;
+const BG = "#09080c", WHITE = "#f4f2f3", ACC = "#e63950", RED = "#9b1c36", MUTED = "rgba(244,242,243,0.6)";
+const SANS = "'Noto Sans'", SERIF = "Lora";
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+
+// ---------- helpers ----------
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const easeOut5 = x => 1 - Math.pow(1 - x, 5);
+const easeIn = x => x * x * x;
+const easeInOut = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const easeSine = x => .5 - .5 * Math.cos(Math.PI * x);
+const easeBack = (x, c1 = 1.5) => { const c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const win = (t, a, b, fi = .4, fo = .4) => Math.min(easeOut(prog(t, a, a + fi)), 1 - easeIn(prog(t, b - fo, b)));
+const bump = (t, a, d) => Math.max(0, Math.sin(prog(t, a, a + d) * Math.PI));
+function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
+function fill(c) { ctx.fillStyle = c; ctx.fillRect(-W, -H, W * 3, H * 3); }
+function chroma(text, x, y, font, color, ab = 0, align = "center", spacing = 0) {
+  ctx.save(); ctx.font = font; ctx.textAlign = align; ctx.textBaseline = "alphabetic"; ctx.letterSpacing = spacing + "px";
+  if (ab > .3) {
+    ctx.globalAlpha *= .7;
+    ctx.fillStyle = "#ff1e5a"; ctx.fillText(text, x - ab, y);
+    ctx.fillStyle = "#1ee6ff"; ctx.fillText(text, x + ab, y + ab * .25);
+    ctx.globalAlpha /= .7;
+  }
+  ctx.fillStyle = color; ctx.fillText(text, x, y);
+  ctx.restore();
+}
+function reveal(text, x, y, k, font, color, align = "center", spacing = 0) {
+  if (k <= 0) return;
+  ctx.save(); ctx.font = font; ctx.letterSpacing = spacing + "px"; ctx.textAlign = align; ctx.textBaseline = "alphabetic";
+  const m = ctx.measureText(text), asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+  const x0 = align === "center" ? x - m.width / 2 : x;
+  ctx.beginPath(); ctx.rect(x0 - 40, y - asc - 16, m.width + 80, asc + desc + 32); ctx.clip();
+  ctx.globalAlpha *= clamp(k * 1.4); ctx.fillStyle = color;
+  ctx.fillText(text, x, y + (1 - easeOut5(k)) * (asc + desc + 22));
+  ctx.restore();
+}
+function glow(x, y, r, color, a) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = a;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, color); g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); ctx.restore();
+}
+// anamorphic lens flare: hot core + long horizontal streak + ghosts
+function flare(x, y, a, size = 1) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = "lighter";
+  glow(x, y, 180 * size, "rgba(255,200,210,1)", a * .9);
+  const g = ctx.createLinearGradient(x - 700 * size, 0, x + 700 * size, 0);
+  g.addColorStop(0, "rgba(255,80,110,0)"); g.addColorStop(.5, `rgba(255,225,232,${a})`); g.addColorStop(1, "rgba(255,80,110,0)");
+  ctx.fillStyle = g; ctx.fillRect(x - 700 * size, y - 2.5 * size, 1400 * size, 5 * size);
+  ctx.globalAlpha = a * .5; ctx.fillRect(x - 700 * size, y - 9 * size, 1400 * size, 18 * size);
+  for (const [k, r, c] of [[.5, 34, "255,120,150"], [.9, 16, "140,200,255"], [1.4, 60, "230,57,80"]]) {
+    ctx.globalAlpha = a * .3; ctx.fillStyle = `rgb(${c})`;
+    ctx.beginPath(); ctx.arc(lerp(x, CX, k * 2), lerp(y, CY, k * 2), r * size, 0, 6.283); ctx.fill();
+  }
+  ctx.restore();
+}
+function backdrop(t, a = 1) {
+  fill(BG);
+  ctx.save(); ctx.globalAlpha = a; ctx.lineWidth = 1;
+  const off = (t * 10) % 60;
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  for (let x = -60 + off; x < W + 60; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = -60 + off * .5; y < H + 60; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.restore();
+}
+function vignette(d = .65) {
+  const g = ctx.createRadialGradient(CX, CY, 340, CX, CY, 800);
+  g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${d})`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+// ---------- stars (hyperspace) ----------
+const SPEED = t => .03 + 1.1 * prog(t, 19.0, 19.6) * (1 - prog(t, 23.3, 24.6)) + .8 * bump(t, 19.0, .8);
+const DIST = (() => { const a = [0]; for (let i = 1; i <= DURATION * 240 + 10; i++) a.push(a[i - 1] + SPEED(i / 240) / 240); return a; })();
+const dist = t => DIST[Math.max(0, Math.min(DIST.length - 1, Math.round(t * 240)))];
+const STARS = (() => { const R = rng(5); return Array.from({ length: 420 }, () => ({ x: (R() - .5) * 2.2, y: (R() - .5) * 2.2, z: R() })); })();
+function starfield(t, alpha = 1) {
+  const d = dist(t), sp = SPEED(t);
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineCap = "round";
+  for (const s of STARS) {
+    const z = ((s.z - d) % 1 + 1) % 1 + .02, z2 = Math.min(1.1, z + sp * .06);
+    const x1 = CX + s.x / z * 330, y1 = CY + s.y / z * 330, x2 = CX + s.x / z2 * 330, y2 = CY + s.y / z2 * 330;
+    if (x1 < -50 || x1 > W + 50 || y1 < -50 || y1 > H + 50) continue;
+    ctx.strokeStyle = `rgba(240,235,245,${clamp(1.15 - z) * alpha})`; ctx.lineWidth = .6 + (1 - z) * 2.4;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2 + .01, y2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ---------- 3D camera ----------
+function makeCam(yaw, pitch, dist_, fov, cx = CX, cy = CY, ty = 0) {
+  const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  return p => {
+    const x = p[0], y = p[1] - ty, z = p[2];
+    const x1 = x * cyw - z * syw, z1 = x * syw + z * cyw;
+    const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+    const s = fov / (z2 + dist_);
+    return [cx + x1 * s, cy - y2 * s, z2];
+  };
+}
+// camera choreography for the dimension scenes
+function camAt(t) {
+  const tilt = easeInOut(prog(t, 6.0, 7.6));
+  const crane = easeInOut(prog(t, 7.8, 10.2));
+  const orbit = easeSine(prog(t, 3.0, 12.6));
+  const yaw = lerp(0, .35, prog(t, 3, 6)) * (1 - tilt) + tilt * lerp(-.45, -1.55, orbit);
+  const pitch = lerp(Math.PI / 2 - .0001, .5, tilt) + crane * .32;
+  const dist_ = 14 + crane * 17 + prog(t, 10, 12.6) * 3;
+  const fov = lerp(lerp(900, 1500, easeOut(prog(t, 0, 3))), 1500, prog(t, 3, 6));
+  return makeCam(yaw, pitch, dist_, fov, CX, lerp(CY, 640, tilt) - crane * 30, crane * 1.0);
+}
+function line3(P, a, b, k = 1) { const p = P(a), q = P(b); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(lerp(p[0], q[0], k), lerp(p[1], q[1], k)); ctx.stroke(); }
+function polyPts(pts) { ctx.beginPath(); pts.forEach((s, i) => i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1])); ctx.closePath(); }
+const area = pts => { let a = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+
+// box: x,z centre, half sizes w,d, height h
+function drawBox(P, b, h, opts = {}) {
+  if (h <= .001) return;
+  const { edge = "rgba(244,242,243,0.55)", top = "#1d1b24", lw = 1.4, topGlow = 0 } = opts;
+  const x0 = b.x - b.w, x1 = b.x + b.w, z0 = b.z - b.d, z1 = b.z + b.d;
+  const V = [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1], [x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1]].map(P);
+  const faces = [[[4, 5, 6, 7], top], [[0, 1, 5, 4], "#131118"], [[1, 2, 6, 5], "#0f0d13"], [[2, 3, 7, 6], "#131118"], [[3, 0, 4, 7], "#0f0d13"]];
+  for (const [idx, col] of faces) {
+    const pts = idx.map(i => V[i]);
+    if (area(pts) >= 0) continue;   // back face
+    polyPts(pts); ctx.fillStyle = col; ctx.fill();
+    if (idx[0] === 4 && topGlow > 0) { ctx.save(); ctx.globalAlpha = topGlow; ctx.fillStyle = ACC; ctx.fill(); ctx.restore(); }
+    ctx.strokeStyle = edge; ctx.lineWidth = lw; ctx.stroke();
+  }
+  return V;
+}
+
+// hero building (from the floor plan) + city
+const HERO = { x: 0, z: 0, w: 2, d: 1.5 };
+const WALLS = [[[0, -1.5], [0, 1.5]], [[0, 0], [2, 0]], [[-1, -1.5], [-1, 0]], [[-2, .6], [0, .6]]];
+const CITY = (() => {
+  const R = rng(42), b = [];
+  for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) {
+    if (Math.abs(i) <= 1 && Math.abs(j) <= 1) continue;
+    const dd = Math.hypot(i, j);
+    b.push({ x: i * 1.75 + (R() - .5) * .3, z: j * 1.75 + (R() - .5) * .3, w: .5 + R() * .25, d: .5 + R() * .25,
+             h: .7 + R() * 3.4 * (1 - dd / 7.5) + R() * .5, dist: dd, cost: -1 });
+  }
+  // five tall ones get cost labels in 5D
+  [...b].sort((p, q) => q.h - p.h).slice(0, 5).forEach((x, i) => x.cost = i);
+  return b;
+})();
+const heroH = t => 4 * easeOut(prog(t, 6.2, 7.6));
+const cityH = (b, t) => b.h * easeBack(prog(t, 8.0 + b.dist * .3, 8.7 + b.dist * .3), 1.2);
+
+// ===========================================================================
+// SOUND CUES
+// ===========================================================================
+const SFX = []; const cue = (t, type, extra = {}) => SFX.push({ t, type, ...extra });
+cue(0, "riser", { dur: .8 });
+[.8, 1.8, 2.8].forEach(x => cue(x, "blip"));
+CONFIG.dimStarts.slice(1).forEach((s, i) => { cue(s - .3, "whoosh", { dur: .5, soft: true }); cue(s, "hit", { tone: i + 1 }); });
+for (let i = 0; i < 8; i++) cue(8.0 + i * .25, "clock", { p: i % 2 });
+CONFIG.costs.forEach((_, i) => cue(10.3 + i * .22, "coin", { p: i }));
+cue(10.8, "count", { dur: 1.0 });
+cue(12.5, "whoosh", { dur: 1.0 }); cue(12.6, "suck", { dur: 1.35 }); cue(13.95, "impact", { soft: true });
+CONFIG.flips.forEach(([ft], i) => { cue(ft, "glitch", { p: i }); cue(ft, "tick", { p: i }); });
+cue(18.1, "riser", { dur: .9 }); [18.45, 18.7, 18.85].forEach((x, i) => cue(x, "glitch", { p: 6 + i }));
+cue(19.0, "impact"); cue(19.0, "explode"); cue(19.0, "braam", { dur: 4.0 });
+CONFIG.words.forEach((_, i) => { cue(19.5 + i - .2, "whoosh", { dur: .25, soft: true }); cue(19.5 + i, "hit"); });
+cue(23.5, "riser", { dur: 1.85 }); cue(23.5, "roll", { dur: 1.85 });
+cue(25.35, "silence", { dur: .15 });
+cue(REV, "impact"); cue(REV, "braam", { dur: 5.0, up: true }); cue(REV + .1, "sparkle");
+cue(REV + 1.25, "whoosh", { dur: .5, soft: true }); cue(REV + 1.75, "ding"); cue(REV + 2.0, "sparkle");
+cue(REV + 2.7, "whoosh", { dur: .4, soft: true }); cue(REV + 3.4, "pop", { soft: true }); cue(30.2, "blip");
+
+// ===========================================================================
+// SCENE A–D: dimensions
+// ===========================================================================
+function dimLabel(t) {
+  const S = CONFIG.dimStarts;
+  let i = -1; S.forEach((s, j) => { if (t >= s) i = j; });
+  if (i < 0 || t > 12.9) return;
+  const s = S[i], k = easeOut5(prog(t, s, s + .45)), out = easeIn(prog(t, 12.4, 12.8));
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  ctx.translate(90, 200); ctx.scale(lerp(1.35, 1, k), lerp(1.35, 1, k));
+  chroma(CONFIG.dims[i][0], 0, 0, `200 150px ${SANS}`, WHITE, 8 * (1 - prog(t, s, s + .6)), "left");
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  reveal(CONFIG.dims[i][1], 96, 262, prog(t, s + .15, s + .65), `italic 600 46px ${SERIF}`, ACC, "left");
+  for (let j = 0; j < 5; j++) { ctx.fillStyle = j <= i ? ACC : "rgba(255,255,255,0.18)"; ctx.fillRect(96 + j * 34, 292, 24, 4); }
+  ctx.restore();
+}
+let CITY_PTS = null;   // city surface points projected at 12.5 s → start of the particle swarm
+function cityPoints() {
+  if (CITY_PTS) return CITY_PTS;
+  const P = camAt(12.5), R = rng(808), pts = [];
+  const all = [{ ...HERO, h: 4 }, ...CITY.map(b => ({ ...b }))];
+  while (pts.length < 2600) {
+    const b = all[Math.floor(R() * all.length)], f = R();
+    const p = f < .4 ? [b.x + (R() - .5) * 2 * b.w, b.h, b.z + (R() - .5) * 2 * b.d]
+                     : [b.x + (R() < .5 ? -b.w : b.w), R() * b.h, b.z + (R() - .5) * 2 * b.d];
+    const s = P(p); pts.push([s[0], s[1]]);
+  }
+  return (CITY_PTS = pts);
+}
+function sceneDims(t) {
+  backdrop(t, 1 - prog(t, 12.6, 13.2));
+  const P = camAt(t), cityFade = 1 - easeIn(prog(t, 12.45, 12.95));
+  ctx.save(); ctx.globalAlpha = cityFade; ctx.lineCap = "round";
+  // 1D: the point
+  if (t < 4.5) {
+    const pk = easeOut(prog(t, .5, 1.3)), [px, py] = P([0, 0, 0]), beat = bump(t % 1, .8, .4);
+    glow(px, py, 260, "rgba(230,57,80,0.85)", pk * (.55 + beat * .35) * (1 - prog(t, 3.2, 4.5)));
+    flare(px, py, pk * (.35 + beat * .3) * (1 - prog(t, 2.9, 3.4)), .7);
+    ctx.fillStyle = WHITE; ctx.beginPath(); ctx.arc(px, py, 10 * pk, 0, 6.283); ctx.fill();
+  }
+  // opener text
+  const ok = win(t, 1.0, 2.9, .5, .4);
+  if (ok > 0) { ctx.save(); ctx.globalAlpha = ok; reveal(CONFIG.opener, CX, 820, prog(t, 1.0, 1.6), `italic 600 52px ${SERIF}`, WHITE); ctx.restore(); }
+  // 2D: plan lines
+  const lk = easeInOut(prog(t, 3.0, 4.6));
+  if (lk > 0) {
+    const out = [[-2, -1.5], [2, -1.5], [2, 1.5], [-2, 1.5]];
+    ctx.strokeStyle = WHITE; ctx.lineWidth = 3;
+    for (let k = 0; k < 4; k++) { const a = out[k], b = out[(k + 1) % 4]; line3(P, [a[0] * lk, 0, a[1] * lk], [b[0] * lk, 0, b[1] * lk]); }
+    ctx.strokeStyle = "rgba(244,242,243,0.6)"; ctx.lineWidth = 2;
+    WALLS.forEach(([a, b], i) => line3(P, [a[0], 0, a[1]], [b[0], 0, b[1]], easeOut(prog(t, 3.6 + i * .25, 4.6 + i * .25))));
+    // dimension lines (blueprint feel)
+    const dk = win(t, 4.2, 6.6, .5, .5);
+    if (dk > 0) {
+      ctx.save(); ctx.globalAlpha = dk; ctx.strokeStyle = ACC; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]);
+      line3(P, [-2, 0, -2.1], [2, 0, -2.1]); line3(P, [2.6, 0, -1.5], [2.6, 0, 1.5]);
+      ctx.setLineDash([]); ctx.font = `600 22px ${SANS}`; ctx.fillStyle = ACC; ctx.textAlign = "center";
+      const a = P([0, 0, -2.4]), b = P([3.0, 0, 0]);
+      ctx.fillText("24,00 m", a[0], a[1]); ctx.fillText("18,00 m", b[0], b[1]);
+      ctx.restore();
+    }
+  }
+  // 3D/4D/5D: city + hero, painter-sorted
+  if (t > 6.0) {
+    const items = CITY.map(b => ({ b, h: cityH(b, t), depth: P([b.x, 0, b.z])[2] }));
+    items.push({ b: HERO, h: heroH(t), depth: P([0, 0, 0])[2], hero: true });
+    items.sort((p, q) => q.depth - p.depth);
+    for (const it of items) {
+      if (it.h <= .001) continue;
+      const costGlow = it.b.cost >= 0 ? easeOut(prog(t, 10.3 + it.b.cost * .22, 10.6 + it.b.cost * .22)) * .55 : 0;
+      drawBox(P, it.b, it.h, it.hero ? { edge: WHITE, lw: 2.4, top: "#25212c", topGlow: .25 * win(t, 8, 12.4) } : { topGlow: costGlow, edge: costGlow > 0 ? "rgba(230,57,80,0.9)" : "rgba(244,242,243,0.5)" });
+      if (it.hero && it.h > .05) {
+        // floors + interior walls on top
+        ctx.strokeStyle = "rgba(244,242,243,0.35)"; ctx.lineWidth = 1.2;
+        WALLS.forEach(([a, b]) => line3(P, [a[0], it.h, a[1]], [b[0], it.h, b[1]]));
+        for (let f = 1; f < 4; f++) if (f < it.h) { ctx.strokeStyle = "rgba(230,57,80,0.7)"; const pts = [[-2, f, -1.5], [2, f, -1.5], [2, f, 1.5], [-2, f, 1.5]].map(P); polyPts(pts); ctx.stroke(); }
+      }
+    }
+    // 4D: calendar weeks counter
+    const ck = win(t, 8.0, 10.3, .3, .3);
+    if (ck > 0) {
+      const kw = Math.max(1, Math.round(52 * easeInOut(prog(t, 8.0, 10.0))));
+      ctx.save(); ctx.globalAlpha = ck;
+      ctx.font = `600 22px ${SANS}`; ctx.fillStyle = MUTED; ctx.textAlign = "right"; ctx.fillText("BAUZEIT", 990, 110);
+      chroma(`KW ${String(kw).padStart(2, "0")}`, 990, 178, `200 72px ${SANS}`, WHITE, 0, "right");
+      ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fillRect(760, 196, 230, 3);
+      ctx.fillStyle = ACC; ctx.fillRect(760, 196, 230 * kw / 52, 3);
+      ctx.restore();
+    }
+    // 5D: cost labels on the tall buildings + S-curve + total
+    CITY.filter(b => b.cost >= 0).forEach(b => {
+      const k = easeBack(prog(t, 10.3 + b.cost * .22, 10.65 + b.cost * .22), 2) * (1 - prog(t, 12.2, 12.5));
+      if (k <= 0) return;
+      const [sx, sy] = P([b.x, cityH(b, t), b.z]);
+      ctx.save(); ctx.globalAlpha = clamp(k); ctx.strokeStyle = ACC; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy - 60 * k); ctx.stroke();
+      ctx.translate(sx, sy - 60 * k); ctx.scale(k, k);
+      ctx.font = `700 22px ${SANS}`; const lab = CONFIG.costs[b.cost], w = ctx.measureText(lab).width + 22;
+      ctx.fillStyle = ACC; ctx.beginPath(); ctx.roundRect(-w / 2, -34, w, 34, 7); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(lab, 0, -16);
+      ctx.restore();
+    });
+    const sk = win(t, 10.5, 12.5, .3, .25);
+    if (sk > 0) {
+      ctx.save(); ctx.globalAlpha = sk;
+      const x0 = 620, x1 = 990, y0 = 1000, y1 = 880, pr = easeInOut(prog(t, 10.5, 11.8));
+      ctx.beginPath(); ctx.moveTo(x0, y0);
+      for (let i = 0; i <= 60 * pr; i++) { const u = i / 60; ctx.lineTo(lerp(x0, x1, u), lerp(y0, y1, easeInOut(u))); }
+      ctx.strokeStyle = ACC; ctx.lineWidth = 3; ctx.stroke();
+      ctx.lineTo(lerp(x0, x1, pr), y0); ctx.closePath(); ctx.fillStyle = "rgba(230,57,80,0.12)"; ctx.fill();
+      const v = (CONFIG.total * easeOut(prog(t, 10.8, 11.8))).toFixed(1).replace(".", ",");
+      chroma(`Σ ${v} Mio €`, 990, 860, `700 46px ${SANS}`, WHITE, 0, "right");
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+  dimLabel(t);
+}
+
+// ===========================================================================
+// SCENE E/F: particles → 5D° logo, count to ∞, crack, shatter
+// ===========================================================================
+function drawOldLogo(g, num, x, y, s, color = WHITE) {
+  g.save(); g.translate(x, y); g.scale(s, s);
+  g.font = `300 230px ${SANS}`; g.textBaseline = "alphabetic"; g.textAlign = "left";
+  const txt = num + "D", w = g.measureText(txt).width;
+  g.fillStyle = color; g.fillText(txt, -w / 2, 0);
+  g.strokeStyle = color; g.lineWidth = 11; g.beginPath(); g.arc(w / 2 + 34, -150, 26, 0, 6.283); g.stroke();
+  g.font = `400 46px ${SANS}`; g.letterSpacing = "4px"; g.textAlign = "right"; g.fillText("INSTITUT", w / 2 + 6, 60);
+  g.restore();
+}
+function sample(drawFn, step, seed, max) {
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d"); drawFn(g);
+  const d = g.getImageData(0, 0, W, H).data, pts = [];
+  for (let y = 0; y < H; y += step) for (let x = 0; x < W; x += step) if (d[(y * W + x) * 4 + 3] > 120) pts.push([x, y]);
+  const R = rng(seed);
+  for (let i = pts.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [pts[i], pts[j]] = [pts[j], pts[i]]; }
+  return pts.slice(0, max);
+}
+let LOGO_PTS = null, LOGO_IMG = null, SHARDS = null;
+function logoPoints() { return LOGO_PTS || (LOGO_PTS = sample(g => drawOldLogo(g, "5", CX, 600, 1), 4, 11, 2600)); }
+function logoImage() {
+  if (LOGO_IMG) return LOGO_IMG;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  drawOldLogo(c.getContext("2d"), "∞", CX, 600, .8);
+  return (LOGO_IMG = c);
+}
+function shards() {
+  if (SHARDS) return SHARDS;
+  const R = rng(5150), cols = 11, rows = 7, x0 = 170, y0 = 350, w = 740, h = 340, g = [];
+  for (let j = 0; j <= rows; j++) for (let i = 0; i <= cols; i++) {
+    const edge = i === 0 || j === 0 || i === cols || j === rows;
+    g.push([x0 + w * i / cols + (edge ? 0 : (R() - .5) * 50), y0 + h * j / rows + (edge ? 0 : (R() - .5) * 40)]);
+  }
+  const at = (i, j) => g[j * (cols + 1) + i], out = [];
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    for (const tri of [[at(i, j), at(i + 1, j), at(i + 1, j + 1)], [at(i, j), at(i + 1, j + 1), at(i, j + 1)]]) {
+      const c = [(tri[0][0] + tri[1][0] + tri[2][0]) / 3, (tri[0][1] + tri[1][1] + tri[2][1]) / 3];
+      const a = Math.atan2(c[1] - 520, c[0] - CX) + (R() - .5) * .6;
+      out.push({ tri, c, a, v: 400 + R() * 900, z: 1.5 + R() * 3, rot: (R() - .5) * 8, d: R() * .12 });
+    }
+  }
+  return (SHARDS = out);
+}
+function sceneLogo(t) {
+  backdrop(t, prog(t, 12.6, 13.4));
+  glow(CX, 560, 560, "rgba(155,28,54,0.75)", .5 * prog(t, 13.4, 14.2) + bump(t, 15.5, 2.8) * .5);
+  // particle swarm city → logo
+  if (t < 14.6) {
+    const S = cityPoints(), T = logoPoints(), n = Math.min(S.length, T.length);
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    const fadeIn = prog(t, 12.45, 12.8), fadeOut = 1 - prog(t, 14.0, 14.6);
+    for (let i = 0; i < n; i++) {
+      const d = (i % 97) / 97 * .35, k = easeInOut(prog(t, 12.6 + d, 13.85 + d * .4));
+      const s = S[i], e = T[i];
+      const mx = (s[0] + e[0]) / 2, my = (s[1] + e[1]) / 2, ang = k * 2.2 + (i % 7) * .4, sw = Math.sin(k * Math.PI) * (120 + (i % 13) * 14);
+      const x = lerp(s[0], e[0], k) + Math.cos(ang) * sw, y = lerp(s[1], e[1], k) + Math.sin(ang) * sw;
+      ctx.fillStyle = i % 5 ? `rgba(255,236,240,${fadeIn * fadeOut})` : `rgba(230,57,80,${fadeIn * fadeOut})`;
+      ctx.fillRect(x - 1.7, y - 1.7, 3.4, 3.4);
+    }
+    ctx.restore();
+  }
+  // solid logo (with the counter)
+  let num = "5", label = "";
+  for (const [ft, nn, l] of CONFIG.flips) if (t >= ft) { num = nn; label = l || label; }
+  const last = CONFIG.flips.filter(f => t >= f[0]).pop();
+  const ab = last ? 16 * Math.exp(-(t - last[0]) * 7) : 0;
+  const fit = num.length > 1 ? .8 : 1, solid = easeOut(prog(t, 13.75, 14.3));
+  const crack = prog(t, 18.45, 19.0);
+  if (t < 19.0) {
+    ctx.save(); ctx.globalAlpha = solid;
+    if (ab > 2) {   // glitch slices
+      const R = rng(Math.floor(t * 30));
+      for (let i = 0; i < 7; i++) {
+        const y0 = 340 + R() * 360, hh = 12 + R() * 40, dx = (R() - .5) * ab * 5;
+        ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, hh); ctx.clip(); ctx.translate(dx, 0);
+        drawOldLogo(ctx, num, CX, 600, fit, WHITE); ctx.restore();
+      }
+    }
+    if (ab > .5) {
+      ctx.save(); ctx.globalAlpha *= .6; ctx.translate(-ab, 0); drawOldLogo(ctx, num, CX, 600, fit, "#ff1e5a"); ctx.translate(ab * 2, ab * .3); drawOldLogo(ctx, num, CX, 600, fit, "#1ee6ff"); ctx.restore();
+    }
+    drawOldLogo(ctx, num, CX, 600, fit, WHITE);
+    ctx.restore();
+    // cracks before the shatter
+    if (crack > 0) {
+      const R = rng(99);
+      ctx.save(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.shadowColor = ACC; ctx.shadowBlur = 16;
+      for (let c = 0; c < 9; c++) {
+        let x = CX + (R() - .5) * 120, y = 520 + (R() - .5) * 80; const a0 = R() * 6.283;
+        ctx.beginPath(); ctx.moveTo(x, y);
+        const segs = Math.floor(8 * clamp(crack * 1.4 - c * .05));
+        for (let s = 0; s < segs; s++) { const a = a0 + (R() - .5) * 1.2; x += Math.cos(a) * 45; y += Math.sin(a) * 32; ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+      ctx.restore();
+      glow(CX, 520, 300, "rgba(255,200,210,1)", crack * .5);
+    }
+  }
+  // captions
+  const ck = win(t, 14.3, 15.5, .4, .25);
+  if (ck > 0) { ctx.save(); ctx.globalAlpha = ck; reveal(CONFIG.since, CX, 830, prog(t, 14.3, 14.8), `italic 600 46px ${SERIF}`, MUTED); ctx.restore(); }
+  if (label && t < 17.0) { ctx.save(); ctx.globalAlpha = 1 - prog(t, 16.8, 17.0); chroma(label, CX, 830, `italic 600 50px ${SERIF}`, ACC, ab * .3); ctx.restore(); }
+  const mk = win(t, 17.1, 19.0, .4, .15);
+  if (mk > 0) { ctx.save(); ctx.globalAlpha = mk; reveal(CONFIG.more, CX, 830, prog(t, 17.1, 17.6), `italic 600 50px ${SERIF}`, WHITE); ctx.restore(); }
+}
+function sceneShatter(t) {
+  // shards of the ∞D° logo fly at the camera
+  const img = logoImage(), k0 = t - 19.0;
+  ctx.save();
+  for (const s of shards()) {
+    const k = easeOut(clamp((k0 - s.d) / 1.3));
+    if (k >= 1) continue;
+    const sc = lerp(1, s.z, easeIn(k)), dx = Math.cos(s.a) * s.v * k, dy = Math.sin(s.a) * s.v * k + 140 * k * k;
+    ctx.save(); ctx.globalAlpha = 1 - easeIn(k);
+    ctx.translate(s.c[0] + dx, s.c[1] + dy); ctx.rotate(s.rot * k); ctx.scale(sc, sc); ctx.translate(-s.c[0], -s.c[1]);
+    ctx.beginPath(); ctx.moveTo(...s.tri[0]); ctx.lineTo(...s.tri[1]); ctx.lineTo(...s.tri[2]); ctx.closePath();
+    ctx.fillStyle = "rgba(230,57,80,0.10)"; ctx.fill();
+    ctx.save(); ctx.clip(); ctx.drawImage(img, 0, 0); ctx.restore();
+    ctx.strokeStyle = "rgba(255,210,220,0.55)"; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ===========================================================================
+// SCENE G/H: hyperspace through tesseracts
+// ===========================================================================
+const TV = []; for (let i = 0; i < 16; i++) TV.push([i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1, i & 8 ? 1 : -1]);
+const TE = []; for (let i = 0; i < 16; i++) for (let b = 0; b < 4; b++) { const j = i ^ (1 << b); if (j > i) TE.push([i, j, b]); }
+function tesseract(t, x, y, size, a = 1, spin = 1, lw = 3, phase = 0) {
+  if (a <= 0 || size <= 1) return;
+  const ax = (t + phase) * .7 * spin, ay = (t + phase) * .45 * spin, az = (t + phase) * .3 * spin;
+  const pts = TV.map(([px, py, pz, pw]) => {
+    const x1 = px * Math.cos(ax) - pw * Math.sin(ax), w1 = px * Math.sin(ax) + pw * Math.cos(ax);
+    const y1 = py * Math.cos(ay) - pz * Math.sin(ay), z1 = py * Math.sin(ay) + pz * Math.cos(ay);
+    const z2 = z1 * Math.cos(az) - w1 * Math.sin(az), w2 = z1 * Math.sin(az) + w1 * Math.cos(az);
+    const k4 = 2.2 / (3 - w2), X = x1 * k4, Y = y1 * k4, Z = z2 * k4;
+    const rx = X * Math.cos(t * .3) - Z * Math.sin(t * .3), rz = X * Math.sin(t * .3) + Z * Math.cos(t * .3);
+    const k3 = 4 / (5 + rz);
+    return [x + rx * k3 * size, y + Y * k3 * size];
+  });
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineCap = "round";
+  TE.forEach(([i, j, b]) => {
+    ctx.strokeStyle = b === 3 ? `rgba(230,57,80,${.9 * a})` : `rgba(244,242,243,${.7 * a})`;
+    ctx.lineWidth = b === 3 ? lw * 1.25 : lw;
+    ctx.beginPath(); ctx.moveTo(pts[i][0], pts[i][1]); ctx.lineTo(pts[j][0], pts[j][1]); ctx.stroke();
+  });
+  pts.forEach(p => { ctx.fillStyle = `rgba(255,255,255,${a})`; ctx.beginPath(); ctx.arc(p[0], p[1], lw * 1.3, 0, 6.283); ctx.fill(); });
+  ctx.restore();
+}
+function sceneHyper(t) {
+  fill(BG);
+  const implode = easeIn(prog(t, 24.2, 25.0));
+  starfield(t, 1 - implode);
+  glow(CX, CY, 650, "rgba(155,28,54,0.6)", (1 - implode) * (.6 + bump(t % 1, .5, .35) * .3));
+  // tunnel of tesseracts rushing at the camera
+  const travel = dist(t) * 1.6;
+  for (let i = 0; i < 7; i++) {
+    const z = ((i / 7 - travel) % 1 + 1) % 1, size = 60 / (z + .05);
+    const a = clamp(z * 3) * clamp((1 - z) * 4) * (1 - implode);
+    tesseract(t, CX, CY, size * (1 - implode), a * .8 * (1 - .6 * prog(t, 23.3, 23.8)), .6, 1.5 + (1 - z) * 2.5, i * 1.7);
+  }
+  // hero tesseract
+  const hk = easeOut5(prog(t, 19.0, 20.0));
+  tesseract(t, CX, CY, lerp(30, 300, hk) * (1 - implode * .99), (1 - implode * .3) * (1 - .75 * prog(t, 23.3, 23.8)), 1 + implode * 6, 3);
+  CONFIG.words.forEach((w, i) => {
+    const s = 19.5 + i, a = win(t, s, s + 1.0, .1, .2);
+    if (a <= 0) return;
+    const sl = easeOut5(prog(t, s, s + .35));
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(CX, CY + 45); ctx.scale(lerp(1.9, 1, sl) * (1 + prog(t, s, s + 1) * .05), lerp(1.9, 1, sl) * (1 + prog(t, s, s + 1) * .05));
+    chroma(w, 0, 0, `800 136px ${SANS}`, "#fff", 12 * (1 - prog(t, s, s + .6)));
+    ctx.restore();
+  });
+  const nk = win(t, 23.5, 24.85, .3, .25);
+  if (nk > 0) {
+    ctx.save(); ctx.globalAlpha = nk;
+    reveal(CONFIG.newNameLead[0], CX, 470, prog(t, 23.5, 24.0), `italic 600 72px ${SERIF}`, MUTED);
+    reveal(CONFIG.newNameLead[1], CX, 580, prog(t, 23.8, 24.3), `800 88px ${SANS}`, WHITE);
+    ctx.restore();
+  }
+}
+
+// ===========================================================================
+// SCENE I: REVEAL from particles
+// ===========================================================================
+const NAME = { size: 132, spacing: 14, baseY: 560 };
+function nameLayout(g) {
+  g.font = `300 ${NAME.size}px ${SANS}`; g.letterSpacing = "0px";
+  const chars = [...CONFIG.newName], body = CONFIG.ringAsLastLetter ? chars.slice(0, -1) : chars;
+  const ringD = NAME.size * .72, ringW = CONFIG.ringAsLastLetter ? ringD + NAME.spacing : 0;
+  const widths = body.map(ch => g.measureText(ch).width + NAME.spacing);
+  const total = widths.reduce((s, v) => s + v, 0) + ringW;
+  let x = CX - total / 2; const letters = body.map((ch, i) => { const L = { ch, x, w: widths[i] }; x += widths[i]; return L; });
+  const ring = CONFIG.ringAsLastLetter ? { x: x + ringD / 2, y: NAME.baseY - NAME.size * .36, r: ringD / 2 - 5 } : { x: x + 46, y: NAME.baseY - NAME.size * .9, r: 26 };
+  return { letters, ring, total };
+}
+function drawName(g, lay, color = WHITE) {
+  g.save(); g.font = `300 ${NAME.size}px ${SANS}`; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = color;
+  lay.letters.forEach(L => g.fillText(L.ch, L.x + L.w / 2, NAME.baseY));
+  g.restore();
+}
+let NAME_PTS = null, NAME_IMG = null;
+function namePoints() {
+  if (NAME_PTS) return NAME_PTS;
+  const pts = sample(g => drawName(g, nameLayout(g)), 3, 77, 3200);
+  const xs = pts.map(p => p[0]), mn = Math.min(...xs), mx = Math.max(...xs);
+  return (NAME_PTS = pts.map(p => [p[0], p[1], (p[0] - mn) / (mx - mn)]));
+}
+function nameImage() {
+  if (NAME_IMG) return NAME_IMG;
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  drawName(g, nameLayout(g)); return (NAME_IMG = c);
+}
+function sceneReveal(t) {
+  const k0 = t - REV, lay = nameLayout(ctx);
+  backdrop(t, prog(k0, .2, 1.5));
+  const push = 1 + easeSine(prog(k0, 0, 6.5)) * .06;
+  ctx.save(); ctx.translate(CX, 520); ctx.scale(push, push); ctx.translate(-CX, -520);
+  glow(CX, 520, 760, "rgba(155,28,54,0.8)", .55 + bump(k0, 0, .9) * .9);
+  // soft rays
+  const ra = (.1 + bump(k0, 0, 1.2) * .3) * clamp(k0 * 3);
+  if (ra > 0) {
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.translate(CX, 520); ctx.rotate(t * .08);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 900); g.addColorStop(0, `rgba(255,190,200,${ra})`); g.addColorStop(1, "rgba(255,190,200,0)");
+    ctx.fillStyle = g;
+    for (let i = 0; i < 14; i++) { const a = i / 14 * 6.283; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 1200, a - .045, a + .045); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+  }
+  tesseract(t, CX, 520, 440, .12 * prog(k0, 2, 4), .25, 2);
+  // particles burst from the ring and settle into the letters
+  const pts = namePoints(), solid = easeOut(prog(k0, 1.5, 2.1)), pFade = 1 - prog(k0, 1.8, 2.4);
+  if (pFade > 0) {
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < pts.length; i++) {
+      const [tx, ty, u] = pts[i], d = u * .45 + (i % 11) * .01;
+      const k = easeInOut(prog(k0, .1 + d, 1.35 + d));
+      const a = (i * 2.399) % 6.283, R = 260 + (i % 17) * 28;
+      const sx = CX + Math.cos(a) * 20, sy = 520 + Math.sin(a) * 20;
+      const cx = CX + Math.cos(a + 1.2) * R, cy = 520 + Math.sin(a + 1.2) * R * .8;
+      const x = (1 - k) * (1 - k) * sx + 2 * (1 - k) * k * cx + k * k * tx, y = (1 - k) * (1 - k) * sy + 2 * (1 - k) * k * cy + k * k * ty;
+      const hot = 1 - k;
+      ctx.fillStyle = i % 6 ? `rgba(255,${200 + 55 * k},${210 + 45 * k},${(.5 + .5 * clamp(k0 * 4)) * pFade})` : `rgba(230,57,80,${pFade})`;
+      ctx.fillRect(x - 1.2 - hot, y - 1.2 - hot, 2.4 + hot * 2, 2.4 + hot * 2);
+    }
+    ctx.restore();
+  }
+  // solid letters + light sweep
+  if (solid > 0) {
+    ctx.save(); ctx.globalAlpha = solid; ctx.drawImage(nameImage(), 0, 0); ctx.restore();
+    const sw = prog(k0, 2.0, 2.8);
+    if (sw > 0 && sw < 1) {
+      const c = document.createElement("canvas"); c.width = W; c.height = 260; const g = c.getContext("2d");
+      g.drawImage(nameImage(), 0, -400); g.globalCompositeOperation = "source-atop";
+      const sx = lerp(CX - lay.total / 2 - 200, CX + lay.total / 2 + 200, easeInOut(sw));
+      const gr = g.createLinearGradient(sx - 120, 0, sx + 120, 0);
+      gr.addColorStop(0, "rgba(255,255,255,0)"); gr.addColorStop(.5, "rgba(255,120,150,1)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = gr; g.fillRect(0, 0, W, 260);
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.drawImage(c, 0, 400); ctx.restore();
+    }
+  }
+  // the ring: centre → O
+  const fly = easeInOut(prog(k0, 1.15, 1.75));
+  const rr = lerp(46, lay.ring.r, fly) * (1 + bump(k0, 1.75, .35) * .22);
+  const rx = lerp(CX, lay.ring.x, fly), ry = lerp(520, lay.ring.y, fly);
+  ctx.save(); ctx.strokeStyle = ACC; ctx.lineWidth = 11.5; ctx.shadowColor = ACC; ctx.shadowBlur = 30 + bump(k0, 1.75, .6) * 60;
+  ctx.beginPath(); ctx.arc(rx, ry, rr, 0, 6.283); ctx.stroke(); ctx.restore();
+  flare(rx, ry, bump(k0, 0, .9) * .9 + bump(k0, 1.75, .9) * .8 + bump(k0, 2.2, 1.0) * .35, .9);
+  // shockwaves
+  for (const [h, x, y, mr] of [[0, CX, 520, 950], [1.75, lay.ring.x, lay.ring.y, 420]]) {
+    const k = prog(k0, h, h + .9);
+    if (k0 >= h && k < 1) { ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = `rgba(255,170,185,${1 - k})`; ctx.lineWidth = 26 * (1 - k) + 2; ctx.beginPath(); ctx.arc(x, y, easeOut(k) * mr, 0, 6.283); ctx.stroke(); ctx.restore(); }
+  }
+  // underline, tagline, formerly, url
+  const ul = easeInOut(prog(k0, 2.4, 3.1));
+  if (ul > 0) { ctx.fillStyle = ACC; ctx.fillRect(CX - lay.total / 2 * ul, NAME.baseY + 52, lay.total * ul, 3); }
+  reveal(CONFIG.tagline, CX, NAME.baseY + 145, prog(k0, 2.7, 3.4), `italic 600 58px ${SERIF}`, WHITE);
+  ctx.save(); ctx.textAlign = "center";
+  ctx.globalAlpha = easeOut(prog(k0, 3.4, 4.0)); ctx.font = `400 28px ${SANS}`; ctx.letterSpacing = "6px"; ctx.fillStyle = MUTED;
+  ctx.fillText(CONFIG.formerly.toUpperCase(), CX, NAME.baseY + 255);
+  ctx.globalAlpha = easeOut(prog(k0, 3.9, 4.5)); ctx.letterSpacing = "2px"; ctx.font = `600 27px ${SANS}`; ctx.fillStyle = ACC;
+  ctx.fillText(CONFIG.url, CX, NAME.baseY + 305);
+  ctx.restore();
+  ctx.restore();
+}
+
+// ===========================================================================
+// master
+// ===========================================================================
+const SHAKES = [[3.0, 5], [6.0, 7], [8.0, 6], [10.0, 6], [13.95, 10], [15.5, 9], [16.3, 7], [18.1, 9], [19.0, 40], [19.5, 12], [20.5, 12],
+                [21.5, 12], [22.5, 14], [REV, 46], [REV + 1.75, 12]];
+function shake(t) {
+  let a = 0;
+  for (const [h, amp] of SHAKES) if (t >= h && t < h + .9) a += amp * Math.exp(-(t - h) * 6);
+  a += prog(t, 24.0, 25.3) * 6 + prog(t, 18.45, 19.0) * 5;
+  return [a * Math.sin(t * 91.3) * Math.cos(t * 17.1), a * Math.cos(t * 83.7) * Math.sin(t * 23.9), a * .0014 * Math.sin(t * 61)];
+}
+function render(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.globalCompositeOperation = "source-over"; ctx.letterSpacing = "0px";
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  const [sx, sy, sr] = shake(t);
+  ctx.save(); ctx.translate(CX + sx, CY + sy); ctx.rotate(sr); ctx.translate(-CX, -CY);
+  if (t < 12.5) sceneDims(t);
+  else if (t < 19.0) { if (t < 13.0) sceneDims(t); if (t < 13.0) { ctx.save(); ctx.globalAlpha = prog(t, 12.45, 12.8); sceneLogo(t); ctx.restore(); } else sceneLogo(t); }
+  else if (t < 25.35) { sceneHyper(t); if (t < 20.4) sceneShatter(t); }
+  else if (t < REV) fill("#000");
+  else sceneReveal(t);
+  // ring alone in the dark before the reveal
+  if (t >= 24.85 && t < REV + .02) {
+    const k = easeOut(prog(t, 24.85, 25.25));
+    ctx.save(); ctx.strokeStyle = ACC; ctx.lineWidth = 12; ctx.shadowColor = ACC; ctx.shadowBlur = 40;
+    ctx.beginPath(); ctx.arc(CX, 520, 46 * k, -Math.PI / 2, -Math.PI / 2 + 6.283 * k); ctx.stroke(); ctx.restore();
+  }
+  ctx.restore();
+  vignette(t > REV ? .5 : .65);
+  for (const [h, a, d] of [[13.95, .35, .45], [19.0, .55, .3], [REV, 1, .45]]) {
+    const f = (1 - prog(t, h, h + d)) * a;
+    if (t >= h && f > 0) { ctx.fillStyle = `rgba(255,236,240,${f})`; ctx.fillRect(0, 0, W, H); }
+  }
+  const fade = Math.max(1 - prog(t, 0, .5), prog(t, 31.4, 32));
+  if (fade > 0) { ctx.fillStyle = `rgba(0,0,0,${fade})`; ctx.fillRect(0, 0, W, H); }
+}
+
+const acc = document.getElementById("acc"), actx = acc.getContext("2d");
+function renderFrame(t, fps = 60, samples = 6, shutter = .55) {
+  if (samples <= 1) { render(t); return cv.toDataURL("image/png").split(",")[1]; }
+  actx.globalAlpha = 1; actx.clearRect(0, 0, W, H);
+  for (let i = 0; i < samples; i++) {
+    const st = Math.min(DURATION - 1e-4, Math.max(0, t + (i / (samples - 1) - .5) * shutter / fps));
+    render(st); actx.globalAlpha = 1 / (i + 1); actx.drawImage(cv, 0, 0);
+  }
+  return acc.toDataURL("image/png").split(",")[1];
+}
+window.render = render; window.renderFrame = renderFrame; window.DURATION = DURATION; window.SFX = SFX; window.MUSIC = "reveal2";
+window.ready = Promise.all([
+  document.fonts.load(`300 40px ${SANS}`), document.fonts.load(`800 40px ${SANS}`), document.fonts.load(`200 40px ${SANS}`),
+  document.fonts.load(`600 40px ${SANS}`), document.fonts.load(`italic 600 40px ${SERIF}`),
+]).then(() => document.fonts.ready);
+if (!location.search.includes("render")) {
+  window.ready.then(() => {
+    const t0 = performance.now();
+    const loop = now => { render(((now - t0) / 1000) % DURATION); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  });
+}
+</script>
+</body>
+</html>

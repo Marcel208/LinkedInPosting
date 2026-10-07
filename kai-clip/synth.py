@@ -489,6 +489,52 @@ def arrange_reveal(mix, dur):
     return kicks
 
 
+
+# ---------------------------------------------------------------- reveal2 (epic cut, 32 s)
+def reveal2_chord(t):
+    for end, ch in ((6.0, 0), (8.0, 1), (10.0, 2), (12.5, 3), (15.5, 0), (19.0, 3), (20.0, 0), (21.0, 1), (22.0, 2), (25.4, 3),
+                    (28.0, 2), (30.0, 1)):
+        if t < end:
+            return ch
+    return 2
+
+
+def arrange_reveal2(mix, dur):
+    kicks = []
+    t = tt(12.8)
+    drone = lowpass_fft(saw(midi(33), t) + saw(midi(33) * 1.004, t + .3), 170) * np.minimum(1, t / 2.5) * np.minimum(1, (12.8 - t) / .4)
+    mix.add(drone, 0, .38, bus="music")
+    groove(mix, 6.0, 12.5, "half", reveal2_chord, kicks, .7)
+    groove(mix, 15.5, 19.0, "build", reveal2_chord, kicks, .55)
+    groove(mix, 19.0, 23.5, "full", reveal2_chord, kicks, 1.05)
+    groove(mix, 23.5, 25.3, "build", reveal2_chord, kicks, .85)
+    groove(mix, 27.0, 30.5, "half", reveal2_chord, kicks, .8)
+    for a, b, g in ((8.0, 12.5, .7), (19.0, 23.5, 1.0), (27.0, 31.0, .7)):
+        k = int(np.ceil(a / (BEAT / 4)))
+        while k * BEAT / 4 < b:
+            t0 = k * BEAT / 4
+            notes = CHORDS[reveal2_chord(t0)]
+            n = notes[[0, 1, 2, 1][k % 4]] + 12 + (12 if k % 8 >= 4 else 0)
+            mix.add(pluck(midi(n)), t0, g, pan=.35 * np.sin(k), bus="music", send=.35)
+            k += 1
+    edges = [0.5, 6.0, 8.0, 10.0, 12.5, 15.5, 19.0, 20.0, 21.0, 22.0, 23.5, 25.3]
+    for a, b in zip(edges, edges[1:]):
+        for i, n in enumerate(CHORDS[reveal2_chord(a + .01)]):
+            mix.add(pad_note(midi(n), b - a + .05), a, .8 if a < 19 else 1.2, pan=(i - 1) * .5, bus="music", send=.45)
+    # particles → logo: airy choir
+    for i, n in enumerate(CHORDS[0] + [69]):
+        mix.add(choir_note(midi(n + 12), 3.2), 12.5, .6, pan=(i - 1.5) * .4, bus="music", send=.8)
+    # the reveal: C – F – C with choir
+    for a, b in ((25.5, 28.0), (28.0, 30.0), (30.0, dur)):
+        ch = CHORDS[reveal2_chord(a + .01)]
+        for i, n in enumerate(ch + [ch[0] + 12]):
+            mix.add(pad_note(midi(n), b - a + .1), a, 1.5, pan=(i - 1.5) * .4, bus="music", send=.6)
+            mix.add(choir_note(midi(n + 12), b - a + .2), a, .9, pan=(i - 1.5) * .4, bus="music", send=.8)
+    mix.add(bass_note(midi(36), 2.5), 25.5, 1.1, bus="music")
+    mix.add(crash(), 25.5, .6, send=.4)
+    return kicks
+
+
 def sfx(mix, cues):
     for c in cues:
         t, ty = c["t"], c["type"]
@@ -567,7 +613,7 @@ def main():
     data = json.load(open(sys.argv[1]))
     dur = data["duration"]
     mix = Mix(dur)
-    kicks = {"galaxy": arrange_galaxy, "reveal": arrange_reveal}.get(data.get("style"), arrange)(mix, dur)
+    kicks = {"galaxy": arrange_galaxy, "reveal": arrange_reveal, "reveal2": arrange_reveal2}.get(data.get("style"), arrange)(mix, dur)
     sfx(mix, data["cues"])
 
     # sidechain duck on the music bus
