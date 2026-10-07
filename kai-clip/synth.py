@@ -420,6 +420,75 @@ def arrange_galaxy(mix, dur):
     return kicks
 
 
+
+# ---------------------------------------------------------------- reveal style
+def clock_tick(p=0):
+    t = tt(.06)
+    f = 2600 if p else 1900
+    return (np.sin(2 * np.pi * f * t) * np.exp(-t * 120) + highpass_fft(rng.standard_normal(len(t)), 4000) * np.exp(-t * 200) * .4) * .35
+
+
+def glitch(p=0):
+    t = tt(.16)
+    n = rng.standard_normal(len(t))
+    hold = int(SR / (900 + p * 300))
+    crushed = np.repeat(n[::hold], hold)[: len(t)]
+    sq = np.sign(np.sin(2 * np.pi * (220 + 90 * p) * t)) * .5
+    gate = (np.floor(t * 60) % 2 == 0).astype(float)
+    return (crushed * .6 + sq) * gate * np.exp(-t * 10) * .35
+
+
+def tone_hit(p=0):
+    t = tt(.7)
+    base = hit()[: len(t)]
+    f = midi(57 + [0, 3, 7, 10, 12][p % 5])
+    return base + np.sin(2 * np.pi * f * t) * np.exp(-t * 6) * .35
+
+
+# chord indices into CHORDS: 0 Am, 1 F, 2 C, 3 G
+def reveal_chord(t):
+    for end, ch in ((7.5, 0), (8.5, 0), (9.25, 1), (10.0, 2), (11.0, 3), (13.0, 2), (14.5, 1)):
+        if t < end:
+            return ch
+    return 2
+
+
+def arrange_reveal(mix, dur):
+    kicks = []
+    t = tt(5.2)
+    drone = lowpass_fft(saw(midi(33), t) + saw(midi(33) * 1.004, t + .3), 170) * np.minimum(1, t / 1.2) * np.minimum(1, (5.2 - t) / .3)
+    mix.add(drone, 0, .35, bus="music")
+    # sections: pulse under the dimensions, build under the counter, full on the tesseract, build to the blackout
+    groove(mix, 2.5, 4.95, "half", reveal_chord, kicks, .7)
+    groove(mix, 6.0, 7.5, "build", reveal_chord, kicks, .55)
+    groove(mix, 7.5, 10.0, "full", reveal_chord, kicks, 1.05)
+    groove(mix, 10.0, 10.9, "build", reveal_chord, kicks, .85)
+    groove(mix, 12.0, 15.0, "half", reveal_chord, kicks, .8)
+    # arp over the tesseract and the finale
+    for a, b, g in ((7.5, 10.0, 1.0), (12.0, 15.2, .8)):
+        k = int(np.ceil(a / (BEAT / 4)))
+        while k * BEAT / 4 < b:
+            t0 = k * BEAT / 4
+            notes = CHORDS[reveal_chord(t0)]
+            n = notes[[0, 1, 2, 1][k % 4]] + 12 + (12 if k % 8 >= 4 else 0)
+            mix.add(pluck(midi(n)), t0, g, pan=.35 * np.sin(k), bus="music", send=.35)
+            k += 1
+    # pads: stop dead at 10.9 for the blackout
+    edges = [0.4, 5.0, 7.5, 8.5, 9.25, 10.0, 10.9]
+    for a, b in zip(edges, edges[1:]):
+        for i, n in enumerate(CHORDS[reveal_chord(a + .01)]):
+            mix.add(pad_note(midi(n), b - a), a, .9 if a < 7.5 else 1.2, pan=(i - 1) * .5, bus="music", send=.4)
+    # the reveal: big C major with choir, then F, then home to C
+    for a, b in ((11.0, 13.0), (13.0, 14.5), (14.5, dur)):
+        ch = CHORDS[reveal_chord(a + .01)]
+        for i, n in enumerate(ch + [ch[0] + 12]):
+            mix.add(pad_note(midi(n), b - a + .1), a, 1.5, pan=(i - 1.5) * .4, bus="music", send=.6)
+            mix.add(choir_note(midi(n + 12), b - a + .2), a, .9, pan=(i - 1.5) * .4, bus="music", send=.8)
+    mix.add(bass_note(midi(36), 2.0), 11.0, 1.1, bus="music")
+    mix.add(crash(), 11.0, .6, send=.4)
+    return kicks
+
+
 def sfx(mix, cues):
     for c in cues:
         t, ty = c["t"], c["type"]
@@ -429,7 +498,7 @@ def sfx(mix, cues):
             mix.add(impact(c.get("soft", False)), t, .9 if not c.get("soft") else .7, send=.3)
             mix.add(crash(), t, .5 if not c.get("soft") else .25, send=.3)
         elif ty == "hit":
-            mix.add(hit(), t, .9 if c.get("big") else .75, send=.2)
+            mix.add(tone_hit(c["tone"]) if "tone" in c else hit(), t, .9 if c.get("big") else .75, send=.2)
             if c.get("crash"):
                 mix.add(crash(), t, .45, send=.3)
         elif ty == "whoosh":
@@ -474,6 +543,10 @@ def sfx(mix, cues):
             mix.add(sparkle(), t + .05, .7, send=.6)
         elif ty == "firework":
             mix.add(firework(c.get("p", 0)), t, .8, pan=(-.5 if c.get("p", 0) % 2 == 0 else .5), send=.4)
+        elif ty == "clock":
+            mix.add(clock_tick(c.get("p", 0)), t, 1.0, pan=.2, send=.2)
+        elif ty == "glitch":
+            mix.add(glitch(c.get("p", 0)), t, .9, pan=(-.3 if c.get("p", 0) % 2 else .3), send=.15)
         elif ty == "sparkle":
             mix.add(sparkle(), t, 1.0, pan=.1, send=.7)
 
@@ -494,7 +567,7 @@ def main():
     data = json.load(open(sys.argv[1]))
     dur = data["duration"]
     mix = Mix(dur)
-    kicks = arrange_galaxy(mix, dur) if data.get("style") == "galaxy" else arrange(mix, dur)
+    kicks = {"galaxy": arrange_galaxy, "reveal": arrange_reveal}.get(data.get("style"), arrange)(mix, dur)
     sfx(mix, data["cues"])
 
     # sidechain duck on the music bus
